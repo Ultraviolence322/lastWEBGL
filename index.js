@@ -2,6 +2,11 @@ const canvas = document.getElementById('app');
 const gl = canvas.getContext('webgl');
 
 let xPosPaddle = 0
+let bannanaWidth = 0.273 / 2
+
+let xPosBall = 0
+let yPosBall = 0
+let ballRadius =  0.01
 
 let MouseContr = new MouseController(gl);
 let shaderProgram = initShaders(gl)
@@ -28,8 +33,6 @@ loadJSON(gl,'bannana.json');
 
 let bannanaVertices   =  gl.model.meshes[0].vertices;
 bannanaVertices = bannanaVertices.map(e => e / 600)
-localStorage.setItem('verts', JSON.stringify(bannanaVertices))
-// console.log('bannanaVertices', bannanaVertices);
 
 let bannanaIndices    =  [].concat.apply([], gl.model.meshes[0].faces);
 let bannanaCoords  =  gl.model.meshes[0].texturecoords[0];
@@ -106,7 +109,7 @@ function animate(){
   // BANNANA
 
   glMatrix.mat4.identity(bannanaModelMat);
-  glMatrix.mat4.translate(bannanaModelMat,bannanaModelMat, [xPosPaddle , -0.85, -2]);
+  glMatrix.mat4.translate(bannanaModelMat,bannanaModelMat, [xPosPaddle - bannanaWidth , -0.85, -2]);
   glMatrix.mat4.rotateX(bannanaModelMat,bannanaModelMat , 220 * Math.PI / 180);
   glMatrix.mat4.rotateY(bannanaModelMat,bannanaModelMat , 110 * Math.PI / 180);
 
@@ -130,7 +133,7 @@ function animate(){
   // BALL
 
   glMatrix.mat4.identity(ballModelMat);
-  glMatrix.mat4.translate(ballModelMat,ballModelMat, [0.5, 0.0, -2]);
+  glMatrix.mat4.translate(ballModelMat,ballModelMat, [xPosBall - ballRadius, -yPosBall + ballRadius * 2, -2]);
 
   gl.uniformMatrix4fv(u_Pmatrix, false, ballProjMat);
   gl.uniformMatrix4fv(u_Mmatrix, false, ballModelMat);
@@ -226,7 +229,7 @@ function init() {
 
   //create bottom
   bodyDef.position.x = 0;
-  bodyDef.position.y = 20;
+  bodyDef.position.y = 22.5;
   fixDef.shape = new b2PolygonShape;
   fixDef.shape.SetAsBox(20, 0.1);
   world.CreateBody(bodyDef).CreateFixture(fixDef);
@@ -252,6 +255,23 @@ function init() {
   fixDef.shape.SetAsBox(0.1, 20);
   world.CreateBody(bodyDef).CreateFixture(fixDef);
 
+  //create box
+  var fixDef4 = new b2FixtureDef;
+  fixDef4.density = 1.0;
+  fixDef4.friction = 1;
+  fixDef4.restitution = 1;
+  
+  var bodyDef4 = new b2BodyDef;
+  
+  bodyDef4.type = b2Body.b2_staticBody;
+
+  bodyDef4.position.x = centerX;
+  bodyDef4.position.y = centerY - 9;
+  fixDef4.shape = new b2PolygonShape;
+  fixDef4.shape.SetAsBox(1, 1);
+  var box=world.CreateBody(bodyDef4);
+  box.CreateFixture(fixDef4);
+
   //create paddle
   var fixDef2 = new b2FixtureDef;
   fixDef2.density = 1.0;
@@ -261,8 +281,8 @@ function init() {
   bodyDef2.type = b2Body.b2_dynamicBody;
 
   fixDef2.shape = new b2CircleShape(1.8);
-  bodyDef2.position.x = centerX + 0.5;
-  bodyDef2.position.y = centerY + 9.5;
+  bodyDef2.position.x = centerX + 0;
+  bodyDef2.position.y = centerY + 11;
   bodyDef2.fixedRotation = true;
   var paddle=world.CreateBody(bodyDef2);
   paddle.CreateFixture(fixDef2);
@@ -294,7 +314,17 @@ function init() {
   ball.SetLinearVelocity(new b2Vec2(0, 10))	
   
   window.setInterval(()=> {
+    if(box.GetContactList()) {
+      setTimeout(() => {
+        world.DestroyBody(box);
+
+      }, 300)
+    }
+
     xPosPaddle = (paddle.GetPosition().x - centerX) / 10
+
+    xPosBall = (ball.GetPosition().x - centerX) / 10
+    yPosBall = (ball.GetPosition().y - centerY) / 10
     update()
   }, 1000 / 30);
 
