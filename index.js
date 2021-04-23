@@ -1,6 +1,57 @@
 const canvas = document.getElementById('app');
 const gl = canvas.getContext('webgl');
 
+var VSHADER_SOURCE = `
+attribute vec3 a_Position;
+attribute vec2 a_uv;
+
+uniform mat4 u_Pmatrix;
+uniform mat4 u_Mmatrix;
+uniform mat4 u_Vmatrix;
+
+varying vec2 v_uv;
+
+void main() {
+  v_uv = a_uv;
+  gl_Position = u_Pmatrix*u_Vmatrix*u_Mmatrix*vec4(a_Position,1.0);
+}
+`
+
+var FSHADER_SOURCE = `
+precision mediump float;
+
+uniform sampler2D sampler;
+
+varying vec2 v_uv;
+
+void main() {
+  gl_FragColor =  texture2D(sampler,v_uv);
+}
+`
+
+const vertex_shader_normal = `
+attribute vec3 a_Position;
+
+uniform mat4 u_Pmatrix;
+uniform mat4 u_Mmatrix;
+uniform mat4 u_Vmatrix;
+
+void main() {
+
+gl_Position = u_Pmatrix*u_Vmatrix*u_Mmatrix*vec4(a_Position,1.0);
+
+}
+`
+const fragment_shader_program = `
+precision mediump float;
+
+void main() {
+
+gl_FragColor = vec4(0.0,0.0,0.5,1.0);
+
+}
+`
+
 let xPosPaddle = 0
 let bannanaWidth = 0.273 / 2
 
@@ -9,7 +60,7 @@ let yPosBall = 0
 let ballRadius =  0.01
 
 let MouseContr = new MouseController(gl);
-let shaderProgram = initShaders(gl)
+let shaderProgram = initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE)
 
 let  u_Pmatrix = gl.getUniformLocation(shaderProgram,'u_Pmatrix');
 let  u_Mmatrix = gl.getUniformLocation(shaderProgram,'u_Mmatrix');
@@ -19,11 +70,22 @@ let  a_Position  = gl.getAttribLocation(shaderProgram,'a_Position');
 let  a_uv        = gl.getAttribLocation(shaderProgram,'a_uv');
 let  u_sampler   = gl.getUniformLocation(shaderProgram,'sampler');
 
+
+let shaderProgram_Normal = initShaders(gl, vertex_shader_normal, fragment_shader_program)
+
+let  u_Pmatrix_normal = gl.getUniformLocation(shaderProgram_Normal,'u_Pmatrix');
+let  u_Mmatrix_normal = gl.getUniformLocation(shaderProgram_Normal,'u_Mmatrix');
+let  u_Vmatrix_normal = gl.getUniformLocation(shaderProgram_Normal,'u_Vmatrix');
+
+let  a_Position_normal  = gl.getAttribLocation(shaderProgram_Normal,'a_Position');
+
 gl.uniform1i(u_sampler, 0);
 
 gl.enableVertexAttribArray(a_Position);
 gl.enableVertexAttribArray(a_uv);
-gl.useProgram(shaderProgram);
+
+gl.enableVertexAttribArray(a_Position_normal);
+
 
 // BANNANA
 
@@ -48,6 +110,47 @@ gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(bannanaCoords),gl.STATIC_DRAW);
 let  BANNANA_FACES = gl.createBuffer();
 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,BANNANA_FACES);
 gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(bannanaIndices),gl.STATIC_DRAW);
+
+// NORMAL 
+let bannanaNormal = gl.model.meshes[0].normals
+bannanaNormal = bannanaNormal.map(e => e / 20)
+
+function normalHelper(gl,ModelVertices,ModelNormal) {
+
+  gl.newNormal = [];
+
+  for(let i = 0; i<= ModelVertices.length; i = i+3){
+
+      var vectorVer = glMatrix.vec3.create();
+      vectorVer[0] = ModelVertices[i];
+      vectorVer[1] = ModelVertices[i+1];
+      vectorVer[2] = ModelVertices[i+2];
+
+      var vectorNormal = glMatrix.vec3.create();
+      vectorNormal[0] = ModelNormal[i];
+      vectorNormal[1] = ModelNormal[i+1];
+      vectorNormal[2] = ModelNormal[i+2];
+
+
+      glMatrix.vec3.scale(vectorNormal,vectorNormal,0.5);
+      glMatrix.vec3.add(vectorNormal,vectorNormal,vectorVer);
+
+      let v = [].concat.apply([], vectorVer);
+      let vn = [].concat.apply([], vectorNormal);
+
+      gl.newNormal.push(v);
+      gl.newNormal.push(vn);
+
+  }
+}
+
+normalHelper(gl, bannanaVertices, bannanaNormal)
+
+let newNormal = [].concat.apply([], gl.newNormal);
+
+let  TRIANGLE_NORMAL = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,TRIANGLE_NORMAL);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(newNormal),gl.DYNAMIC_DRAW);
 
 // BALL
 
@@ -106,12 +209,14 @@ function animate(){
   gl.clearColor(0.5, 0.5, 0.5, 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+  gl.useProgram(shaderProgram);
   // BANNANA
 
   glMatrix.mat4.identity(bannanaModelMat);
   glMatrix.mat4.translate(bannanaModelMat,bannanaModelMat, [xPosPaddle - bannanaWidth , -0.85, -2]);
   glMatrix.mat4.rotateX(bannanaModelMat,bannanaModelMat , 220 * Math.PI / 180);
   glMatrix.mat4.rotateY(bannanaModelMat,bannanaModelMat , 110 * Math.PI / 180);
+  glMatrix.mat4.scale(bannanaModelMat,bannanaModelMat ,[1.0,1.0,1.0]);
 
   gl.uniformMatrix4fv(u_Pmatrix, false, bannanaProjMat);
   gl.uniformMatrix4fv(u_Mmatrix, false, bannanaModelMat);
@@ -152,6 +257,18 @@ function animate(){
 
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ball_FACES);
   gl.drawElements(gl.TRIANGLES, ballIndices.length, gl.UNSIGNED_SHORT, 0);
+
+  // NORMAL
+
+  gl.useProgram(shaderProgram_Normal);
+
+  gl.uniformMatrix4fv(u_Pmatrix_normal, false, bannanaProjMat);
+  gl.uniformMatrix4fv(u_Mmatrix_normal, false, bannanaModelMat);
+  gl.uniformMatrix4fv(u_Vmatrix_normal, false, bannanaViewMat);
+ 
+  gl.bindBuffer(gl.ARRAY_BUFFER, TRIANGLE_NORMAL);
+  gl.vertexAttribPointer(a_Position_normal, 3, gl.FLOAT, false, 4 * (3), 0);
+  gl.drawArrays(gl.LINES, 0, newNormal.length/3);
 
   gl.flush();
   window.requestAnimationFrame(animate);

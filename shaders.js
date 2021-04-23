@@ -1,30 +1,4 @@
-var VSHADER_SOURCE = `
-attribute vec3 a_Position;
-attribute vec2 a_uv;
 
-uniform mat4 u_Pmatrix;
-uniform mat4 u_Mmatrix;
-uniform mat4 u_Vmatrix;
-
-varying vec2 v_uv;
-
-void main() {
-  v_uv = a_uv;
-  gl_Position = u_Pmatrix*u_Vmatrix*u_Mmatrix*vec4(a_Position,1.0);
-}
-`
-
-var FSHADER_SOURCE = `
-precision mediump float;
-
-uniform sampler2D sampler;
-
-varying vec2 v_uv;
-
-void main() {
-  gl_FragColor =  texture2D(sampler,v_uv);
-}
-`
 
 function getShader(gl, id, str) {
   var shader;
@@ -40,7 +14,7 @@ function getShader(gl, id, str) {
   return shader;
 }
 
-function initShaders(gl) {
+function initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE) {
   var VS = getShader(gl, 'vs', VSHADER_SOURCE);
   var FS = getShader(gl, 'fs', FSHADER_SOURCE);
 
