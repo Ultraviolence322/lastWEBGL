@@ -4,29 +4,61 @@ const gl = canvas.getContext('webgl');
 var VSHADER_SOURCE = `
 attribute vec3 a_Position;
 attribute vec2 a_uv;
+attribute vec3 a_normal;
 
 uniform mat4 u_Pmatrix;
 uniform mat4 u_Mmatrix;
 uniform mat4 u_Vmatrix;
 
+uniform vec3 u_source_direction;
+uniform vec3 u_view_direction;
+uniform float u_shininess;
+
 varying vec2 v_uv;
+varying vec3 v_color;
+
+const vec3 source_diffuse_color  = vec3(1.0,1.0,1.0);
+const vec3 source_ambient_color  = vec3(0.2,0.2,0.2);
+const vec3 source_specular_color = vec3(1.0,1.0,1.0);
 
 void main() {
   v_uv = a_uv;
+
+  vec3 N = normalize(a_normal);
+  N = (vec4(a_normal,1.0)).xyz;
+
+  vec3 vertPos     = (u_Vmatrix * u_Mmatrix*vec4(a_Position,1.0)).xyz;
+  vec3 lightDir    = normalize(u_source_direction - vertPos);
+
+  vec3 L = normalize(lightDir);
+  vec3 V = normalize(u_view_direction);
+  vec3 R = normalize(reflect(-L,N));
+  
+  float S = dot(V,R);
+  S = clamp(S,0.0,1.0);
+  S = pow(S,u_shininess);
+  
+  vec3 color =  (S * source_specular_color) + source_ambient_color + source_diffuse_color * max(0.0,dot(N,L));
+
+  v_color = color;
+
   gl_Position = u_Pmatrix*u_Vmatrix*u_Mmatrix*vec4(a_Position,1.0);
 }
 `
 
 var FSHADER_SOURCE = `
-precision mediump float;
+precision highp float;
 
 uniform sampler2D sampler;
 
 varying vec2 v_uv;
+varying vec3 v_color;
 
 void main() {
-  gl_FragColor =  texture2D(sampler,v_uv);
+  vec3 colorTex = vec3(texture2D(sampler,v_uv));
+  gl_FragColor =  vec4(v_color * colorTex,1.0);
 }
+
 `
 
 const vertex_shader_normal = `
@@ -37,7 +69,7 @@ uniform mat4 u_Mmatrix;
 uniform mat4 u_Vmatrix;
 
 void main() {
-
+  gl_PointSize = 5.0;
 gl_Position = u_Pmatrix*u_Vmatrix*u_Mmatrix*vec4(a_Position,1.0);
 
 }
@@ -47,7 +79,7 @@ precision mediump float;
 
 void main() {
 
-gl_FragColor = vec4(0.0,0.0,0.5,1.0);
+gl_FragColor = vec4(0.0,0.1,0.5,1.0);
 
 }
 `
@@ -65,8 +97,12 @@ let shaderProgram = initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE)
 let  u_Pmatrix = gl.getUniformLocation(shaderProgram,'u_Pmatrix');
 let  u_Mmatrix = gl.getUniformLocation(shaderProgram,'u_Mmatrix');
 let  u_Vmatrix = gl.getUniformLocation(shaderProgram,'u_Vmatrix');
+let  u_view_direction = gl.getUniformLocation(shaderProgram,'u_view_direction');
+let  u_source_direction = gl.getUniformLocation(shaderProgram,'u_source_direction');
+let  u_shininess = gl.getUniformLocation(shaderProgram,'u_shininess');
 
 let  a_Position  = gl.getAttribLocation(shaderProgram,'a_Position');
+let  a_normal    = gl.getAttribLocation(shaderProgram,'a_normal');
 let  a_uv        = gl.getAttribLocation(shaderProgram,'a_uv');
 let  u_sampler   = gl.getUniformLocation(shaderProgram,'sampler');
 
@@ -82,6 +118,7 @@ let  a_Position_normal  = gl.getAttribLocation(shaderProgram_Normal,'a_Position'
 gl.uniform1i(u_sampler, 0);
 
 gl.enableVertexAttribArray(a_Position);
+gl.enableVertexAttribArray(a_normal);
 gl.enableVertexAttribArray(a_uv);
 
 gl.enableVertexAttribArray(a_Position_normal);
@@ -210,6 +247,21 @@ function animate(){
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
   gl.useProgram(shaderProgram);
+
+  // LIGHT
+  let source_direction = glMatrix.vec3.create();
+  glMatrix.vec3.set(source_direction,0, 0, 0);
+
+  gl.uniform3fv(u_source_direction, source_direction);
+
+
+  let view_direction = glMatrix.vec3.create();
+  glMatrix.vec3.set(view_direction, xPosBall - ballRadius, -yPosBall + ballRadius * 2, -3);
+  glMatrix.vec3.transformMat4(view_direction,view_direction,bannanaViewMat);
+  gl.uniform3fv(u_view_direction, view_direction);
+
+  gl.uniform1f(u_shininess, 10);
+
   // BANNANA
 
   glMatrix.mat4.identity(bannanaModelMat);
@@ -231,6 +283,8 @@ function animate(){
   gl.vertexAttribPointer(a_Position, 3, gl.FLOAT, false, 4 * (3), 0);
   gl.bindBuffer(gl.ARRAY_BUFFER, BANNANA_UV);
   gl.vertexAttribPointer(a_uv, 2, gl.FLOAT, false, 4 * (2), 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, TRIANGLE_NORMAL);
+  gl.vertexAttribPointer(a_normal, 3, gl.FLOAT, false, 4 * (3), 0);
 
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, BANNANA_FACES);
   gl.drawElements(gl.TRIANGLES, bannanaIndices.length, gl.UNSIGNED_SHORT, 0);
@@ -260,15 +314,15 @@ function animate(){
 
   // NORMAL
 
-  gl.useProgram(shaderProgram_Normal);
+  // gl.useProgram(shaderProgram_Normal);
 
-  gl.uniformMatrix4fv(u_Pmatrix_normal, false, bannanaProjMat);
-  gl.uniformMatrix4fv(u_Mmatrix_normal, false, bannanaModelMat);
-  gl.uniformMatrix4fv(u_Vmatrix_normal, false, bannanaViewMat);
+  // gl.uniformMatrix4fv(u_Pmatrix_normal, false, bannanaProjMat);
+  // gl.uniformMatrix4fv(u_Mmatrix_normal, false, bannanaModelMat);
+  // gl.uniformMatrix4fv(u_Vmatrix_normal, false, bannanaViewMat);
  
-  gl.bindBuffer(gl.ARRAY_BUFFER, TRIANGLE_NORMAL);
-  gl.vertexAttribPointer(a_Position_normal, 3, gl.FLOAT, false, 4 * (3), 0);
-  gl.drawArrays(gl.LINES, 0, newNormal.length/3);
+  // gl.bindBuffer(gl.ARRAY_BUFFER, TRIANGLE_NORMAL);
+  // gl.vertexAttribPointer(a_Position_normal, 3, gl.FLOAT, false, 4 * (3), 0);
+  // gl.drawArrays(gl.LINES, 0, newNormal.length/3);
 
   gl.flush();
   window.requestAnimationFrame(animate);
