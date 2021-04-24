@@ -1,89 +1,6 @@
 const canvas = document.getElementById('app');
 const gl = canvas.getContext('webgl');
 
-var VSHADER_SOURCE = `
-attribute vec3 a_Position;
-attribute vec2 a_uv;
-attribute vec3 a_normal;
-
-uniform mat4 u_Pmatrix;
-uniform mat4 u_Mmatrix;
-uniform mat4 u_Vmatrix;
-
-uniform vec3 u_source_direction;
-uniform vec3 u_view_direction;
-uniform float u_shininess;
-
-varying vec2 v_uv;
-varying vec3 v_color;
-
-const vec3 source_diffuse_color  = vec3(1.0,1.0,1.0);
-const vec3 source_ambient_color  = vec3(0.2,0.2,0.2);
-const vec3 source_specular_color = vec3(1.0,1.0,1.0);
-
-void main() {
-  v_uv = a_uv;
-
-  vec3 N = normalize(a_normal);
-  N = (vec4(a_normal,1.0)).xyz;
-
-  vec3 vertPos     = (u_Vmatrix * u_Mmatrix*vec4(a_Position,1.0)).xyz;
-  vec3 lightDir    = normalize(u_source_direction - vertPos);
-
-  vec3 L = normalize(lightDir);
-  vec3 V = normalize(u_view_direction);
-  vec3 R = normalize(reflect(-L,N));
-  
-  float S = dot(V,R);
-  S = clamp(S,0.0,1.0);
-  S = pow(S,u_shininess);
-  
-  vec3 color =  (S * source_specular_color) + source_ambient_color + source_diffuse_color * max(0.0,dot(N,L));
-
-  v_color = color;
-
-  gl_Position = u_Pmatrix*u_Vmatrix*u_Mmatrix*vec4(a_Position,1.0);
-}
-`
-
-var FSHADER_SOURCE = `
-precision highp float;
-
-uniform sampler2D sampler;
-
-varying vec2 v_uv;
-varying vec3 v_color;
-
-void main() {
-  vec3 colorTex = vec3(texture2D(sampler,v_uv));
-  gl_FragColor =  vec4(v_color * colorTex,1.0);
-}
-
-`
-
-const vertex_shader_normal = `
-attribute vec3 a_Position;
-
-uniform mat4 u_Pmatrix;
-uniform mat4 u_Mmatrix;
-uniform mat4 u_Vmatrix;
-
-void main() {
-  gl_PointSize = 5.0;
-gl_Position = u_Pmatrix*u_Vmatrix*u_Mmatrix*vec4(a_Position,1.0);
-
-}
-`
-const fragment_shader_program = `
-precision mediump float;
-
-void main() {
-
-gl_FragColor = vec4(0.0,0.1,0.5,1.0);
-
-}
-`
-
 let xPosPaddle = 0
 let bannanaWidth = 0.273 / 2
 
@@ -91,12 +8,14 @@ let xPosBall = 0
 let yPosBall = 0
 let ballRadius =  0.01
 
-let MouseContr = new MouseController(gl);
-let shaderProgram = initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE)
+// MAIN SHADER
+
+let shaderProgram = initShaders(gl, 'main')
 
 let  u_Pmatrix = gl.getUniformLocation(shaderProgram,'u_Pmatrix');
 let  u_Mmatrix = gl.getUniformLocation(shaderProgram,'u_Mmatrix');
 let  u_Vmatrix = gl.getUniformLocation(shaderProgram,'u_Vmatrix');
+
 let  u_view_direction = gl.getUniformLocation(shaderProgram,'u_view_direction');
 let  u_source_direction = gl.getUniformLocation(shaderProgram,'u_source_direction');
 let  u_shininess = gl.getUniformLocation(shaderProgram,'u_shininess');
@@ -104,18 +23,17 @@ let  u_shininess = gl.getUniformLocation(shaderProgram,'u_shininess');
 let  a_Position  = gl.getAttribLocation(shaderProgram,'a_Position');
 let  a_normal    = gl.getAttribLocation(shaderProgram,'a_normal');
 let  a_uv        = gl.getAttribLocation(shaderProgram,'a_uv');
-let  u_sampler   = gl.getUniformLocation(shaderProgram,'sampler');
 
+// NORMAL SHADER
 
-let shaderProgram_Normal = initShaders(gl, vertex_shader_normal, fragment_shader_program)
+let shaderProgramNormal = initShaders(gl, 'normal')
 
-let  u_Pmatrix_normal = gl.getUniformLocation(shaderProgram_Normal,'u_Pmatrix');
-let  u_Mmatrix_normal = gl.getUniformLocation(shaderProgram_Normal,'u_Mmatrix');
-let  u_Vmatrix_normal = gl.getUniformLocation(shaderProgram_Normal,'u_Vmatrix');
+let  u_Pmatrix_normal = gl.getUniformLocation(shaderProgramNormal,'u_Pmatrix');
+let  u_Mmatrix_normal = gl.getUniformLocation(shaderProgramNormal,'u_Mmatrix');
+let  u_Vmatrix_normal = gl.getUniformLocation(shaderProgramNormal,'u_Vmatrix');
 
-let  a_Position_normal  = gl.getAttribLocation(shaderProgram_Normal,'a_Position');
+let  a_Position_normal  = gl.getAttribLocation(shaderProgramNormal,'a_Position');
 
-gl.uniform1i(u_sampler, 0);
 
 gl.enableVertexAttribArray(a_Position);
 gl.enableVertexAttribArray(a_normal);
@@ -123,12 +41,11 @@ gl.enableVertexAttribArray(a_uv);
 
 gl.enableVertexAttribArray(a_Position_normal);
 
-
 // BANNANA
 
-let bannanaTexture =  get_texture(gl,"bannana.jpg");
+let bannanaTexture =  get_texture(gl,"./textures/bannana.jpg");
 
-loadJSON(gl,'bannana.json');
+loadJSON(gl,"./textures/bannana.json");
 
 let bannanaVertices   =  gl.model.meshes[0].vertices;
 bannanaVertices = bannanaVertices.map(e => e / 600)
@@ -148,52 +65,22 @@ let  BANNANA_FACES = gl.createBuffer();
 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,BANNANA_FACES);
 gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(bannanaIndices),gl.STATIC_DRAW);
 
-// NORMAL 
+// NORMAL FOR BANNANA
+
 let bannanaNormal = gl.model.meshes[0].normals
 bannanaNormal = bannanaNormal.map(e => e / 20)
 
-function normalHelper(gl,ModelVertices,ModelNormal) {
-
-  gl.newNormal = [];
-
-  for(let i = 0; i<= ModelVertices.length; i = i+3){
-
-      var vectorVer = glMatrix.vec3.create();
-      vectorVer[0] = ModelVertices[i];
-      vectorVer[1] = ModelVertices[i+1];
-      vectorVer[2] = ModelVertices[i+2];
-
-      var vectorNormal = glMatrix.vec3.create();
-      vectorNormal[0] = ModelNormal[i];
-      vectorNormal[1] = ModelNormal[i+1];
-      vectorNormal[2] = ModelNormal[i+2];
-
-
-      glMatrix.vec3.scale(vectorNormal,vectorNormal,0.5);
-      glMatrix.vec3.add(vectorNormal,vectorNormal,vectorVer);
-
-      let v = [].concat.apply([], vectorVer);
-      let vn = [].concat.apply([], vectorNormal);
-
-      gl.newNormal.push(v);
-      gl.newNormal.push(vn);
-
-  }
-}
-
-normalHelper(gl, bannanaVertices, bannanaNormal)
-
-let newNormal = [].concat.apply([], gl.newNormal);
+let newBannanaNormal = normalHelper(gl, bannanaVertices, bannanaNormal);
 
 let  TRIANGLE_NORMAL = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER,TRIANGLE_NORMAL);
-gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(newNormal),gl.DYNAMIC_DRAW);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(newBannanaNormal),gl.DYNAMIC_DRAW);
 
 // BALL
 
-let ballTexture =  get_texture(gl,"ball.jpg");
+let ballTexture =  get_texture(gl,"./textures/ball.jpg");
 
-loadJSON(gl,'ball.json');
+loadJSON(gl,'./textures/ball.json');
 
 let ballVertices   =  gl.model.meshes[0].vertices;
 ballVertices = ballVertices.map(e => e / 2000)
@@ -254,10 +141,9 @@ function animate(){
 
   gl.uniform3fv(u_source_direction, source_direction);
 
-
   let view_direction = glMatrix.vec3.create();
-  glMatrix.vec3.set(view_direction, xPosBall - ballRadius, -yPosBall + ballRadius * 2, -3);
-  glMatrix.vec3.transformMat4(view_direction,view_direction,bannanaViewMat);
+  glMatrix.vec3.set(view_direction, xPosBall, -yPosBall * 2, -3);
+  glMatrix.vec3.transformMat4(view_direction, view_direction, bannanaViewMat);
   gl.uniform3fv(u_view_direction, view_direction);
 
   gl.uniform1f(u_shininess, 10);
@@ -314,7 +200,7 @@ function animate(){
 
   // NORMAL
 
-  // gl.useProgram(shaderProgram_Normal);
+  // gl.useProgram(shaderProgramNormal);
 
   // gl.uniformMatrix4fv(u_Pmatrix_normal, false, bannanaProjMat);
   // gl.uniformMatrix4fv(u_Mmatrix_normal, false, bannanaModelMat);
@@ -322,7 +208,7 @@ function animate(){
  
   // gl.bindBuffer(gl.ARRAY_BUFFER, TRIANGLE_NORMAL);
   // gl.vertexAttribPointer(a_Position_normal, 3, gl.FLOAT, false, 4 * (3), 0);
-  // gl.drawArrays(gl.LINES, 0, newNormal.length/3);
+  // gl.drawArrays(gl.LINES, 0, newBannanaNormal.length/3);
 
   gl.flush();
   window.requestAnimationFrame(animate);
