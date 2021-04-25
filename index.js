@@ -1,5 +1,9 @@
+import boxCoords from "./textures/box.js"
+
 const canvas = document.getElementById('app');
 const gl = canvas.getContext('webgl');
+
+let boxDestroyed = false
 
 let xPosPaddle = 0
 let bannanaWidth = 0.273 / 2
@@ -100,6 +104,18 @@ let  ball_FACES = gl.createBuffer();
 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ball_FACES);
 gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(ballIndices),gl.STATIC_DRAW);
 
+// BOX
+
+let boxTexture =  get_texture(gl,"./textures/box.jpg");
+
+let  box_VERTEX = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,box_VERTEX);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(boxCoords.vertexes),gl.STATIC_DRAW);
+
+let  box_FACES = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,box_FACES);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(boxCoords.indexes),gl.STATIC_DRAW);
+
 // BANNANA MATRIX
 
 let  bannanaProjMat = glMatrix.mat4.create();
@@ -121,6 +137,16 @@ let  ballViewMat  = glMatrix.mat4.create();
 glMatrix.mat4.perspective(ballProjMat, 50 * Math.PI / 180, canvas.width/canvas.height, 1, 100);
 glMatrix.mat4.identity(ballModelMat);
 glMatrix.mat4.identity(ballViewMat);
+
+// BOX MATRIX
+
+let  boxProjMat = glMatrix.mat4.create();
+let  boxModelMat = glMatrix.mat4.create();
+let  boxViewMat  = glMatrix.mat4.create();
+
+glMatrix.mat4.perspective(boxProjMat, 50 * Math.PI / 180, canvas.width/canvas.height, 1, 100);
+glMatrix.mat4.identity(boxModelMat);
+glMatrix.mat4.identity(boxViewMat);
 
 // RENDER
 
@@ -197,6 +223,32 @@ function animate(){
 
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ball_FACES);
   gl.drawElements(gl.TRIANGLES, ballIndices.length, gl.UNSIGNED_SHORT, 0);
+
+  if(!boxDestroyed){
+    // BOX
+
+    glMatrix.mat4.identity(boxModelMat);
+    glMatrix.mat4.translate(boxModelMat,boxModelMat, [0, 0.8, -2]);
+
+    gl.uniformMatrix4fv(u_Pmatrix, false, boxProjMat);
+    gl.uniformMatrix4fv(u_Mmatrix, false, boxModelMat);
+    gl.uniformMatrix4fv(u_Vmatrix, false, boxViewMat);
+
+
+    if (boxTexture.webGLtexture) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, boxTexture.webGLtexture);
+    }
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, box_VERTEX);
+    gl.vertexAttribPointer(a_Position,3,gl.FLOAT,false,4*(3+2),0);
+    gl.vertexAttribPointer(a_uv,2,gl.FLOAT,false,4*(3+2),3*4);
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, box_FACES);
+    gl.drawElements(gl.TRIANGLES, boxCoords.indexes.length, gl.UNSIGNED_SHORT, 0);
+  }
+
+  
 
   // NORMAL
 
@@ -374,7 +426,7 @@ function init() {
     if(box.GetContactList()) {
       setTimeout(() => {
         world.DestroyBody(box);
-
+        boxDestroyed = true
       }, 300)
     }
 
