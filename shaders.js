@@ -58,6 +58,8 @@ void main() {
 
 `
 
+// NORMAL
+
 const VSHADER_SOURCE_NORMAL = `
 attribute vec3 a_Position;
 
@@ -79,6 +81,32 @@ void main() {
 gl_FragColor = vec4(0.0,0.1,0.5,1.0);
 
 }
+`
+
+// PIECE
+
+const VSHADER_SOURCE_PIECE = `
+attribute vec2 a_Position;
+attribute vec3 a_Color;
+varying vec3 v_Color;
+
+uniform mat4 u_Pmatrix;
+uniform mat4 u_Mmatrix;
+uniform mat4 u_Vmatrix;
+
+void main() {
+  v_Color = a_Color;
+  gl_Position = u_Pmatrix*u_Vmatrix*u_Mmatrix*vec4(a_Position,0.0,1.0);
+}  
+`
+
+const FSHADER_SOURCE_PIECE = `
+precision mediump float;
+varying vec3 v_Color;
+
+void main() {
+  gl_FragColor = vec4(v_Color,1.0);
+}  
 `
 
 function getShader(gl, id, str) {
@@ -105,6 +133,9 @@ function initShaders(gl, way) {
   } else if (way === 'normal') {
     vs = VSHADER_SOURCE_NORMAL
     fs = FSHADER_SOURCE_NORMAL
+  } else if (way === 'piece') {
+    vs = VSHADER_SOURCE_PIECE
+    fs = FSHADER_SOURCE_PIECE
   }
 
   let shaderProgram = gl.createProgram();

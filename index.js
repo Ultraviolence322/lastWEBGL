@@ -1,9 +1,13 @@
 import boxCoords from "./textures/box.js"
+import pieceCoords from "./textures/triangle.js"
 
 const canvas = document.getElementById('app');
 const gl = canvas.getContext('webgl');
 
 let boxDestroyed = false
+let piecesFalling = false
+let piecesPos = []
+let piecesMatrix = []
 
 let xPosPaddle = 0
 let bannanaWidth = 0.273 / 2
@@ -28,6 +32,17 @@ let  a_Position  = gl.getAttribLocation(shaderProgram,'a_Position');
 let  a_normal    = gl.getAttribLocation(shaderProgram,'a_normal');
 let  a_uv        = gl.getAttribLocation(shaderProgram,'a_uv');
 
+// PIECE SHADER
+
+let shaderProgramPiece = initShaders(gl, 'piece')
+
+var a_Position_piece = gl.getAttribLocation(shaderProgramPiece, 'a_Position');
+var a_Color = gl.getAttribLocation(shaderProgramPiece, 'a_Color');
+
+let  u_Pmatrix_piece = gl.getUniformLocation(shaderProgramPiece,'u_Pmatrix');
+let  u_Mmatrix_piece = gl.getUniformLocation(shaderProgramPiece,'u_Mmatrix');
+let  u_Vmatrix_piece = gl.getUniformLocation(shaderProgramPiece,'u_Vmatrix');
+
 // NORMAL SHADER
 
 let shaderProgramNormal = initShaders(gl, 'normal')
@@ -42,6 +57,9 @@ let  a_Position_normal  = gl.getAttribLocation(shaderProgramNormal,'a_Position')
 gl.enableVertexAttribArray(a_Position);
 gl.enableVertexAttribArray(a_normal);
 gl.enableVertexAttribArray(a_uv);
+
+gl.enableVertexAttribArray(a_Position_piece);
+gl.enableVertexAttribArray(a_Color);
 
 gl.enableVertexAttribArray(a_Position_normal);
 
@@ -116,6 +134,12 @@ let  box_FACES = gl.createBuffer();
 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,box_FACES);
 gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(boxCoords.indexes),gl.STATIC_DRAW);
 
+// PIECE
+
+var piece_VERTEX = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, piece_VERTEX);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pieceCoords), gl.STATIC_DRAW);
+
 // BANNANA MATRIX
 
 let  bannanaProjMat = glMatrix.mat4.create();
@@ -138,6 +162,7 @@ glMatrix.mat4.perspective(ballProjMat, 50 * Math.PI / 180, canvas.width/canvas.h
 glMatrix.mat4.identity(ballModelMat);
 glMatrix.mat4.identity(ballViewMat);
 
+
 // BOX MATRIX
 
 let  boxProjMat = glMatrix.mat4.create();
@@ -147,6 +172,22 @@ let  boxViewMat  = glMatrix.mat4.create();
 glMatrix.mat4.perspective(boxProjMat, 50 * Math.PI / 180, canvas.width/canvas.height, 1, 100);
 glMatrix.mat4.identity(boxModelMat);
 glMatrix.mat4.identity(boxViewMat);
+
+// PIECE MATRIX
+
+for (let i = 0; i < 20; i++) {
+  piecesMatrix.push({})
+
+  piecesMatrix[i].proj = glMatrix.mat4.create();
+  piecesMatrix[i].model = glMatrix.mat4.create();
+  piecesMatrix[i].view = glMatrix.mat4.create();
+  
+  glMatrix.mat4.perspective(piecesMatrix[i].proj, 50 * Math.PI / 180, canvas.width/canvas.height, 1, 100);
+  glMatrix.mat4.identity(piecesMatrix[i].model) 
+  glMatrix.mat4.identity(piecesMatrix[i].view)
+}  
+
+console.log('piecesMatrix', piecesMatrix);
 
 // RENDER
 
@@ -246,9 +287,29 @@ function animate(){
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, box_FACES);
     gl.drawElements(gl.TRIANGLES, boxCoords.indexes.length, gl.UNSIGNED_SHORT, 0);
-  }
+  } else if (piecesFalling) {
 
-  
+    console.log('piecesPos', piecesPos.length);
+
+    if (piecesPos.length == 20) {
+      for (let i = 0; i < 20; i++) {
+        gl.useProgram(shaderProgramPiece);
+      
+        glMatrix.mat4.identity(piecesMatrix[i].model);
+        glMatrix.mat4.translate(piecesMatrix[i].model,piecesMatrix[i].model, [piecesPos[i].x , -piecesPos[i].y, -2]);
+      
+        gl.uniformMatrix4fv(u_Mmatrix_piece, false, piecesMatrix[i].model);
+        gl.uniformMatrix4fv(u_Pmatrix_piece, false, piecesMatrix[i].proj);
+        gl.uniformMatrix4fv(u_Vmatrix_piece, false, piecesMatrix[i].view);
+      
+        gl.bindBuffer(gl.ARRAY_BUFFER, piece_VERTEX);
+        gl.vertexAttribPointer(a_Position_piece, 2, gl.FLOAT, false, 4 * (2 + 3), 0);
+        gl.vertexAttribPointer(a_Color, 3, gl.FLOAT, false, 4 * (2 + 3), 2 * 4);
+      
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+    }
+  }
 
   // NORMAL
 
@@ -325,6 +386,8 @@ function init() {
   let b2RevoluteJointDef=Box2D.Dynamics.Joints.b2RevoluteJointDef
   let b2ContactListener=Box2D.Dynamics.b2ContactListener
 
+  let destroyedElementsBox2D = []
+
   world = new b2World(new b2Vec2(0, 0), true);
     
   var fixDef = new b2FixtureDef;
@@ -395,6 +458,8 @@ function init() {
   bodyDef2.fixedRotation = true;
   var paddle=world.CreateBody(bodyDef2);
   paddle.CreateFixture(fixDef2);
+
+  
   
   //create ball
   var fixDef3 = new b2FixtureDef;
@@ -426,14 +491,49 @@ function init() {
     if(box.GetContactList()) {
       setTimeout(() => {
         world.DestroyBody(box);
+
         boxDestroyed = true
-      }, 300)
+        piecesFalling = true
+
+        for(let i = 0; i < 5; i++) {
+          if(destroyedElementsBox2D.length <= 20) {         
+            fixDef2.shape = new b2CircleShape(Math.random() / 5 + 0.1);
+  
+            bodyDef2.position.x = centerX + 0;
+            bodyDef2.position.y = centerY - 9;
+            bodyDef2.fixedRotation = true;
+
+            let piece = world.CreateBody(bodyDef2);
+            piece.CreateFixture(fixDef2);
+            piece.SetLinearVelocity(new b2Vec2(0, 10))	
+
+            destroyedElementsBox2D.push(piece)
+          }
+        }
+        
+      }, 100)
+    }
+    
+
+    if (destroyedElementsBox2D[0]?.GetPosition().y >= centerY) {
+      destroyedElementsBox2D.forEach(e => world.DestroyBody(e))
+      destroyedElementsBox2D = []
+      piecesFalling = false
+    } else if (piecesFalling) {
+      piecesPos = destroyedElementsBox2D.map(e => {
+        return {
+          size: e.m_mass,
+          x: (e.GetPosition().x - centerX) / 10,
+          y: (e.GetPosition().y -centerY) / 10,
+        }
+      })
     }
 
     xPosPaddle = (paddle.GetPosition().x - centerX) / 10
 
     xPosBall = (ball.GetPosition().x - centerX) / 10
     yPosBall = (ball.GetPosition().y - centerY) / 10
+
     update()
   }, 1000 / 30);
 
